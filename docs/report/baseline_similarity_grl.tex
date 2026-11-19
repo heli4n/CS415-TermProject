@@ -1,0 +1,126 @@
+% ECS-48 -- report section draft: baseline, similarity metrics, GRL.
+% Paste into Overleaf. Numbers marked \todo{} are filled in once the log-mel
+% cache (ECS-18) and the splits (ECS-15) exist; the code producing each one is
+% named in the comment next to it. Needs \usepackage{amsmath,booktabs} and a
+% \todo macro, e.g. \newcommand{\todo}[1]{\textcolor{red}{[#1]}}.
+
+\subsection{Baseline: mean log-mel + logistic regression}
+\label{sec:baseline}
+
+Each clip is resampled to 22.05\,kHz mono and converted to a 128-band log-mel
+spectrogram (\(n_\text{fft}=2048\), hop 512); the same settings feed the CNN.
+The baseline averages the spectrogram over time, giving one 128-dimensional
+vector per track, standardises it with training-partition statistics and fits a
+multinomial logistic regression. The regularisation strength \(C\) is chosen on
+validation accuracy and the model is evaluated once on the test partition.
+We define the artist leakage gap as
+\begin{equation}
+  \Delta\text{acc} = \text{Acc}_\text{random} - \text{Acc}_\text{artist-disjoint},
+  \label{eq:delta}
+\end{equation}
+computed for each pair \((\texttt{random}_k, \texttt{artist}_k)\), \(k=0,1,2\),
+and reported as mean \(\pm\) standard deviation over the three pairs
+(Table~\ref{tab:baseline}). A positive gap means that a random split, where the
+same artists occur in training and test, overestimates how well the model
+generalises to unseen artists.
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{lcc}
+    \toprule
+    Split type & Test accuracy & Macro-F1 \\
+    \midrule
+    Random          & \todo{0.xxx $\pm$ 0.xxx} & \todo{0.xxx $\pm$ 0.xxx} \\
+    Artist-disjoint & \todo{0.xxx $\pm$ 0.xxx} & \todo{0.xxx $\pm$ 0.xxx} \\
+    \midrule
+    $\Delta$acc     & \todo{0.xxx $\pm$ 0.xxx} & \\
+    \bottomrule
+  \end{tabular}
+  % numbers: scripts/baseline_all_splits.py (summary_table)
+  \caption{Mean log-mel + logistic regression baseline over three random and
+  three artist-disjoint splits (mean $\pm$ std).}
+  \label{tab:baseline}
+\end{table}
+
+\todo{One or two sentences of interpretation: how large is $\Delta$acc relative
+to its std, i.e.\ is there a clear artist effect even for this simple model?}
+
+\subsection{Artist-aware similarity metrics}
+\label{sec:similarity}
+
+Accuracy alone does not show \emph{why} a model fails on unseen artists, so we
+also measure how the embedding space is organised. Let \(z_i\) be the embedding
+of track \(i\), \(g_i\) its genre, \(a_i\) its artist and
+\(s_{ij} = \cos(z_i, z_j)\).
+
+\paragraph{Artist-filtered genre precision.}
+For a query \(q\), let \(\mathcal{C}_q = \{j : a_j \neq a_q\}\) be the
+candidates by \emph{other} artists and \(N_k(q)\) the \(k\) candidates with the
+highest \(s_{qj}\). Then
+\begin{equation}
+  \text{GP@}k = \frac{1}{|Q|}\sum_{q \in Q}
+    \frac{\bigl|\{ j \in N_k(q) : g_j = g_q \}\bigr|}{\min(k, |\mathcal{C}_q|)},
+  \label{eq:gpk}
+\end{equation}
+where \(Q\) are the queries with \(\mathcal{C}_q \neq \emptyset\). Removing the
+query's own artist prevents a model from scoring well just by retrieving other
+songs by the same artist; comparing with the unfiltered version
+(\(\mathcal{C}_q = \{j \neq q\}\)) shows how much of the apparent genre
+neighbourhood is really artist neighbourhood.
+
+\paragraph{Artist similarity margin.}
+\begin{equation}
+  \text{ASM} =
+  \underset{i<j,\; a_i = a_j}{\operatorname{mean}}\, s_{ij}
+  \;-\;
+  \underset{i<j,\; g_i = g_j,\; a_i \neq a_j}{\operatorname{mean}}\, s_{ij}.
+  \label{eq:asm}
+\end{equation}
+ASM measures how much closer two tracks by the same artist are than two tracks
+of the same genre by different artists. ASM \(>0\) means the representation
+groups tracks by artist beyond what genre explains; an artist-invariant
+representation should have ASM close to zero.
+On the mean log-mel vectors (test partition of \texttt{artist\_0}) we obtain
+GP@10 \(=\) \todo{0.xxx} (unfiltered \todo{0.xxx}) and ASM \(=\) \todo{0.xxx};
+for the CNN embeddings GP@10 \(=\) \todo{0.xxx} and ASM \(=\) \todo{0.xxx}.
+% numbers: scripts/similarity_reference.py (log-mel), python -m src.eval.similarity (CNN)
+\todo{Optional: t-SNE figure from scripts/plot_embeddings.py (ECS-23).}
+
+\subsection{Adversarial artist removal: Gradient Reversal Layer}
+\label{sec:grl}
+
+To remove artist information from the embedding we attach an adversarial artist
+classifier through a Gradient Reversal Layer (GRL)~\cite{ganin2015unsupervised}.
+The GRL is the identity in the forward pass and multiplies the gradient by
+\(-\lambda\) in the backward pass:
+\begin{equation}
+  \text{GRL}_\lambda(z) = z, \qquad
+  \frac{\partial\,\text{GRL}_\lambda(z)}{\partial z} = -\lambda I.
+  \label{eq:grl}
+\end{equation}
+The artist head \(h_a\) (GRL \(\rightarrow\) MLP \(\rightarrow\) logits over
+the training-partition artists) is attached to the embedding \(z = f(x)\) of
+either model, and training minimises
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_\text{CE}\bigl(h_g(z), g\bigr)
+              + \mathcal{L}_\text{CE}\bigl(h_a(\text{GRL}_\lambda(z)), a\bigr).
+  \label{eq:adv-loss}
+\end{equation}
+The artist head itself learns to predict the artist, while the reversed
+gradient pushes the encoder \(f\) to make the artist \emph{un}predictable; \(\lambda\)
+trades genre accuracy against artist invariance. The artist loss is computed
+only for training tracks, since with artist-disjoint splits the validation and
+test artists are unseen by construction. The layer is implemented as a custom
+autograd function and unit-tested: the forward pass is the identity, the
+gradient reaching the encoder is exactly \(-\lambda\) times the gradient without
+the GRL, and it is zero for \(\lambda=0\). Running the adversarial models and
+sweeping \(\lambda\) is the next step; we will report genre accuracy,
+\(\Delta\)acc, GP@10 and ASM as a function of \(\lambda\).
+\todo{If the pilot (ECS-55) is done: one sentence with its first numbers.}
+
+% BibTeX:
+% @inproceedings{ganin2015unsupervised,
+%   title={Unsupervised domain adaptation by backpropagation},
+%   author={Ganin, Yaroslav and Lempitsky, Victor},
+%   booktitle={International Conference on Machine Learning (ICML)},
+%   pages={1180--1189}, year={2015}}
