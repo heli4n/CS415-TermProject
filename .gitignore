@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+# data and caches live on Drive, never in git
+raw/
+cache/
+results/
+*.npy
+*.npz
+*.mp3
