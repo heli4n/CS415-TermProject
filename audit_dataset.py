@@ -72,7 +72,7 @@ report = [
     f"- Remaining tracks: {len(clean)}",
     f"- Audio validation: {bad_status}",
     "",
-    "## Genre Distribution",
+    "## Genre Distribution (original 8,000 tracks)",
     "",
     "| Genre | Track count |",
     "|---|---:|",
@@ -81,9 +81,29 @@ report = [
 for genre, count in genres.items():
     report.append(f"| {genre} | {count} |")
 
+# Statistics after removing the bad audio files: these describe the data the
+# experiments actually use (clean_tracks.csv) and are the numbers to report.
+clean_artist_counts = clean.groupby("artist_id").size()
+clean_multi = int((clean.groupby("artist_id")["genre_top"].nunique() > 1).sum())
 report += [
     "",
-    "## Tracks per Artist",
+    "## After removing bad audio (clean_tracks.csv, used for all experiments)",
+    f"- Tracks: {len(clean)}",
+    f"- Unique artists: {clean['artist_id'].nunique()}",
+    f"- Unique albums: {clean['album_id'].nunique()}",
+    f"- Artists appearing in multiple genres: {clean_multi}",
+    f"- Tracks per artist: mean {clean_artist_counts.mean():.2f}, "
+    f"median {clean_artist_counts.median():.2f}, max {clean_artist_counts.max()}",
+    "",
+    "| Genre | Track count |",
+    "|---|---:|",
+]
+for genre, count in clean["genre_top"].value_counts().sort_index().items():
+    report.append(f"| {genre} | {count} |")
+
+report += [
+    "",
+    "## Tracks per Artist (original 8,000 tracks)",
     f"- Mean: {artist_counts.mean():.2f}",
     f"- Median: {artist_counts.median():.2f}",
     f"- Maximum: {artist_counts.max()}",
