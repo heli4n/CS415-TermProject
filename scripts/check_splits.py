@@ -3,7 +3,10 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-CLEAN = pd.read_csv(ROOT / "audit_outputs" / "clean_tracks.csv")
+# clean_tracks.csv is at the repo root (ECS-14); older checkouts had it in audit_outputs/
+CLEAN_PATH = next(p for p in [ROOT / "clean_tracks.csv", ROOT / "audit_outputs" / "clean_tracks.csv"]
+                  if p.exists())
+CLEAN = pd.read_csv(CLEAN_PATH)
 SPLITS = ROOT / "splits"
 
 expected_ids = set(CLEAN["track_id"])

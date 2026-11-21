@@ -1,4 +1,5 @@
 
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -8,7 +9,9 @@ from sklearn.model_selection import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "audit_outputs" / "clean_tracks.csv"
+# clean_tracks.csv is at the repo root (ECS-14); older checkouts had it in audit_outputs/
+DATA = next(p for p in [ROOT / "clean_tracks.csv", ROOT / "audit_outputs" / "clean_tracks.csv"]
+            if p.exists())
 OUT = ROOT / "splits"
 OUT.mkdir(exist_ok=True)
 
@@ -26,7 +29,15 @@ def save_split(name, assignments):
     assert result["split"].notna().all()
     assert set(result["split"]) == set(PARTITIONS)
 
-    result.to_csv(OUT / f"{name}.csv", index=False)
+    # The committed split files are the frozen v1 used by every experiment.
+    # StratifiedGroupKFold gives different folds in different scikit-learn
+    # versions, so re-running this script elsewhere can silently change
+    # artist_1/artist_2 (~2,500 tracks move). Never overwrite without --force.
+    dest = OUT / f"{name}.csv"
+    if dest.exists() and "--force" not in sys.argv:
+        print(f"{name}: {dest.name} exists, kept (use --force to regenerate)")
+        return
+    result.to_csv(dest, index=False)
     print(f"\n{name}")
     print(result["split"].value_counts().to_string())
 
