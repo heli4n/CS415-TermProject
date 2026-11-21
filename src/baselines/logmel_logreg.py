@@ -144,6 +144,43 @@ def delta_acc(random_res: dict, artist_res: dict) -> dict:
     }
 
 
+def summarize_splits(results: dict[str, dict], n_pairs: int = 3) -> dict:
+    """ECS-20: pair random_k with artist_k, report mean +- std over k.
+
+    std is the sample std (ddof=1) over the k pairs / k splits.
+    """
+    def stats(vals):
+        vals = np.asarray(vals, dtype=float)
+        return {"mean": float(vals.mean()),
+                "std": float(vals.std(ddof=1)) if len(vals) > 1 else 0.0,
+                "values": [float(v) for v in vals]}
+
+    ks = range(n_pairs)
+    deltas = [delta_acc(results[f"random_{k}"], results[f"artist_{k}"]) for k in ks]
+    return {
+        "experiment": "baseline_mean_logmel_logreg_summary",
+        "n_pairs": n_pairs,
+        "acc_random": stats([results[f"random_{k}"]["test_acc"] for k in ks]),
+        "acc_artist": stats([results[f"artist_{k}"]["test_acc"] for k in ks]),
+        "f1_random": stats([results[f"random_{k}"]["test_macro_f1"] for k in ks]),
+        "f1_artist": stats([results[f"artist_{k}"]["test_macro_f1"] for k in ks]),
+        "delta_acc": stats([d["delta_acc"] for d in deltas]),
+    }
+
+
+def summary_table(summary: dict) -> str:
+    """Markdown table for the report / group channel."""
+    def fmt(s):
+        return f"{s['mean']:.3f} ± {s['std']:.3f}"
+    return "\n".join([
+        f"| split type | test acc | macro-F1 |  (n = {summary['n_pairs']} splits each)",
+        "|---|---|---|",
+        f"| random | {fmt(summary['acc_random'])} | {fmt(summary['f1_random'])} |",
+        f"| artist-disjoint | {fmt(summary['acc_artist'])} | {fmt(summary['f1_artist'])} |",
+        f"| **Δacc** | **{fmt(summary['delta_acc'])}** | |",
+    ])
+
+
 def append_log(log_path: Path, record: dict) -> None:
     """Experiment log = one JSON object per line (draft format)."""
     log_path = Path(log_path)
