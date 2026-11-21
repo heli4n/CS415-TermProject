@@ -122,3 +122,14 @@ def test_tracks_outside_split_or_without_genre_are_ignored(synth):
     ids, X = bl.mean_logmel(synth / "cache", tracks.index)
     res = bl.run_split(ids, X, tracks, split, "random_0", Cs=(1.0,))
     assert res["n_train"] + res["n_val"] + res["n_test"] == len(tracks) - 10
+
+
+def test_read_split_accepts_create_splits_labels(tmp_path):
+    """ECS-15 split files use training/validation/test."""
+    import pandas as pd
+    from src.baselines.logmel_logreg import read_split
+    p = tmp_path / "artist_0.csv"
+    pd.DataFrame({"track_id": [1, 2, 3], "genre_top": ["Rock", "Pop", "Folk"],
+                  "artist_id": [1, 2, 3],
+                  "split": ["training", "validation", "test"]}).to_csv(p, index=False)
+    assert list(read_split(p)) == ["train", "val", "test"]
