@@ -15,7 +15,7 @@ column names are arguments so they are easy to change):
 
 * tracks table (``clean_tracks.csv``): ``track_id, genre_top, artist_id``
 * split file (``splits/{random,artist}_{k}.csv``): ``track_id, split`` with
-  split in {train, val, test}
+  split in {training, validation, test} (ECS-15 files) or {train, val, test}
 """
 
 from __future__ import annotations
@@ -35,6 +35,8 @@ from sklearn.preprocessing import StandardScaler
 
 CACHE_FILENAME = "{track_id:06d}.npy"  # same as src/data/audio_config.py (ECS-17)
 PARTITIONS = ("train", "val", "test")
+# scripts/create_splits.py (ECS-15) writes training/validation/test
+PARTITION_ALIASES = {"training": "train", "validation": "val"}
 DEFAULT_CS = (1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0)
 
 
@@ -83,6 +85,7 @@ def read_split(path: Path, track_col: str = "track_id", split_col: str = "split"
     for c in (track_col, split_col):
         if c not in df.columns:
             raise KeyError(f"{path}: missing column '{c}' (have {list(df.columns)})")
+    df[split_col] = df[split_col].replace(PARTITION_ALIASES)
     bad = set(df[split_col]) - set(PARTITIONS)
     if bad:
         raise ValueError(f"{path}: unknown partitions {sorted(bad)}")
